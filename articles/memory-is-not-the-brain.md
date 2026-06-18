@@ -287,32 +287,41 @@ That is enough to start.
 
 ## Implementation example: Hermes memory plus an Obsidian vault
 
-Here is a concrete version of the pattern using Hermes Agent and an Obsidian vault. The same structure works with any Markdown folder, but Hermes is a useful example because it has both persistent startup memory and file/search tools.
+This section is written as an implementation recipe. An agent should be able to read it and build the pattern for its own Hermes profile.
 
-### 1. Keep Hermes memory as the bootloader
+### Target architecture
 
-Hermes memory should contain only the facts that are useful before the agent knows the task. A good bootloader memory might look like this:
+Use three layers:
+
+| Layer | Purpose | Contains | Must not contain |
+|---|---|---|---|
+| Hermes memory | Startup bootloader | Stable preferences, routing rules, source-of-truth pointers | Project state, research findings, decision rationale, logs |
+| Hermes skill | Operating procedure | How to search, write, route, template, and verify brain notes | Specific facts that belong in the brain |
+| Obsidian vault | Durable brain | Decisions, projects, research, operations, indexes, templates | Secrets or temporary task chatter |
+
+The skill is the missing middle layer. Memory tells the agent that the brain exists. The skill tells the agent how to operate it. The vault stores the actual knowledge.
+
+### 1. Configure Hermes memory as a bootloader
+
+Add only compact, broadly useful entries to Hermes memory.
+
+Example `MEMORY` entry:
 
 ```markdown
-The durable brain is an Obsidian vault at `~/path/to/brain-vault`.
-Search the vault before asking the user to repeat stored project, decision, research, or operations context.
-Keep Hermes memory small: store only stable preferences, routing rules, and source-of-truth pointers.
-Durable facts belong in Obsidian notes, not in always-loaded memory.
-Use templates from `Templates/` when creating new notes.
+The durable brain is an Obsidian vault at `~/path/to/brain-vault`. Load the `obsidian-brain` skill before working with stored decisions, projects, research, operations, or cross-session context. Hermes memory is only a bootloader; durable details belong in the vault.
 ```
 
-A user profile memory might contain stable preferences such as:
+Example `USER` entry:
 
 ```markdown
-User prefers concise, source-grounded answers.
-User prefers durable project state and decisions to be stored in the Obsidian brain.
+User prefers concise, source-grounded answers and expects durable decisions, project state, and research to be stored in the Obsidian brain rather than in always-loaded memory.
 ```
 
-Notice what is missing: project status, service details, research findings, decision rationale, logs, and temporary TODOs. Those belong elsewhere.
+Do not put the vault's contents into Hermes memory. Memory should point to the brain and the skill, not copy either of them.
 
-### 2. Put the actual brain in Obsidian
+### 2. Create the Obsidian vault structure
 
-Use a normal Obsidian vault with predictable roots:
+Create a normal Markdown vault with stable roots and indexes:
 
 ```text
 brain-vault/
@@ -334,85 +343,155 @@ brain-vault/
     Operations.md
 ```
 
-The important parts are the indexes and templates. They give agents stable entry points and predictable note shapes.
-
-### 3. Teach Hermes the workflow as instructions, not a plugin
-
-You do not need a custom memory plugin for the first version. Put the workflow in a Hermes skill, system instruction, or project instruction. For example:
+Minimum index notes:
 
 ```markdown
-When working with the brain:
+# Decision Index
+
+Use this folder for durable decisions. Each decision should include status, context, decision, rationale, alternatives, consequences, revisit trigger, and links.
+```
+
+```markdown
+# Project Index
+
+Use this folder for durable project dashboards. Link active projects here.
+```
+
+```markdown
+# Research Index
+
+Use this folder for research notes worth preserving beyond one conversation. Prefer source-grounded notes with assumptions, findings, caveats, and sources.
+```
+
+```markdown
+# Operations Index
+
+Use this folder for local operating procedures, services, automation, and troubleshooting notes.
+```
+
+### 3. Create an `obsidian-brain` Hermes skill
+
+Create a Hermes skill that encodes the operating procedure. For example:
+
+```text
+~/.hermes/skills/note-taking/obsidian-brain/SKILL.md
+```
+
+Minimal skill content:
+
+```markdown
+---
+name: obsidian-brain
+description: Use the Markdown/Obsidian vault as the durable brain for decisions, projects, research, operations, and cross-session context.
+---
+
+# Obsidian Brain
+
+## Vault
+
+`~/path/to/brain-vault`
+
+## When to load this skill
+
+Load this skill when the user asks about stored context, prior decisions, projects, durable research, operations notes, memory hygiene, or anything that should persist beyond the current session.
+
+## Routing policy
+
+- Hermes memory is a bootloader: stable preferences, routing rules, and source-of-truth pointers.
+- The vault is the durable brain: decisions, projects, research, operations, indexes, and templates.
+- Session transcript is for transient task progress and intermediate attempts.
+
+## Search-before-ask workflow
 
 1. Search filenames first.
 2. Search note contents with targeted terms.
 3. Read only the most relevant notes.
-4. If creating a durable note, read the closest template from `Templates/`.
-5. Fill the template with the live date and source-grounded content.
-6. Link the new note from the relevant index.
-7. Read the written note back before reporting success.
-8. Do not promote specific project facts into Hermes memory unless they are stable bootloader context.
+4. If search is weak or inconclusive, say so.
+5. Do not load the whole vault.
+
+## Write workflow
+
+When durable knowledge is created:
+
+1. Choose the destination root: `Decisions/`, `Projects/`, `Research/`, or `Operations/`.
+2. Read the closest template from `Templates/`.
+3. Fill the template using the live date.
+4. Link the new or updated note from the relevant index.
+5. Read the written note back before reporting success.
+6. Do not promote specific facts into Hermes memory unless they are stable bootloader context.
+
+## Maintenance workflow
+
+Periodically review Hermes memory and classify entries as:
+
+- `keep`: still belongs in always-loaded memory;
+- `compress`: keep only a shorter pointer or routing rule;
+- `move`: migrate durable detail into the vault;
+- `delete`: remove because it is stale, transient, or duplicated.
+
+Move before deleting. Verify the destination note before removing or compressing the memory entry.
 ```
 
-That instruction is usually enough for a frontier model with file tools. It can search, read, write, patch, and verify ordinary Markdown.
+This skill is what makes the pattern reliable. Without it, a future agent may know that a vault exists but not how to search it, where to write, when to update indexes, or how to keep startup memory clean.
 
-### 4. Use staged retrieval
+### 4. Use staged retrieval during normal work
 
-A typical Hermes turn should look like this:
+Agent procedure for answering from stored context:
+
+```text
+Input: user asks about a previous decision, project, research topic, or operation.
+
+1. Load `obsidian-brain`.
+2. Identify likely roots: Decisions, Projects, Research, Operations, Brain.
+3. Search filenames with the user's terms and likely synonyms.
+4. Search content only if filename search is insufficient.
+5. Read the smallest set of likely notes.
+6. Answer from the notes read.
+7. Link or name the source notes.
+8. If nothing reliable is found, say that the brain search did not find it.
+```
+
+Example:
 
 ```text
 User: What did we decide about the deployment model?
 
 Agent:
-1. Search `Decisions/` and `Projects/` for `deployment model`.
-2. Inspect matching filenames and snippets.
-3. Read the one or two relevant notes.
-4. Answer from those notes and link the decision.
+1. Load `obsidian-brain`.
+2. Search `Decisions/` and `Projects/` for `deployment model`, `deploy`, and the project name if known.
+3. Inspect snippets.
+4. Read the matching decision note.
+5. Answer with the decision, rationale, consequences, and link to the note.
 ```
-
-The agent should not read the whole vault. It should not paste a large decision index into context if a filename search already found the exact note.
 
 ### 5. Use write-back rules
 
-When a conversation creates durable knowledge, Hermes should write it to the vault. Common write-backs:
+Agent procedure for deciding where new durable knowledge goes:
 
-| Event | Write-back |
+| Event | Destination |
 |---|---|
-| A decision is made | Create or update a note in `Decisions/` |
-| A project changes state | Update the project dashboard in `Projects/` |
-| Research was useful beyond the session | Create a source-grounded note in `Research/` |
-| A local operating procedure is discovered | Create or update an `Operations/` note |
-| A stable preference is discovered | Add a short declarative entry to Hermes memory |
-| A temporary task advances | Leave it in the session or task tracker |
+| A decision is made | `Decisions/` or a domain-specific decision note |
+| A project changes state | Existing project note in `Projects/` |
+| Research remains useful beyond the session | `Research/` |
+| A local operating procedure is discovered | `Operations/` |
+| A stable preference or routing rule is discovered | Hermes memory |
+| A temporary task advances | Session transcript or task tracker |
 
-The rule is not "remember everything." The rule is "put durable things in the smallest useful place."
-
-### 6. Run occasional hygiene
-
-Over time, startup memory will still accumulate too much. That does not mean the agent failed. It means the agent made local calls during real work, and some of those calls need to be revisited with more distance.
-
-A simple hygiene pass can fix that:
-
-1. Read the current Hermes memory entries.
-2. Classify each entry as `keep`, `move to Obsidian`, `compress to pointer`, or `delete`.
-3. For each moved entry, find or create the right Obsidian note.
-4. Verify the note was written.
-5. Remove or compress the Hermes memory entry.
-
-The maintenance pass is allowed to correct earlier routing. For example, an agent might save a fact as global memory because it looked broadly useful during a task. Later, hygiene can decide that the fact is really project-specific and move it into a project note, leaving behind only a pointer if future agents need to know where to look.
-
-The output should be a short report of what changed, not a dump of the migrated content.
-
-This gives you the useful part of a memory system without adding an opaque memory system. Hermes remembers where the brain is and how to use it. Obsidian holds the actual knowledge.
-
-### 7. Schedule hygiene as a Hermes cron job
-
-If the pattern is working, make hygiene recurring. In Hermes, that can be a scheduled cron prompt rather than a custom memory plugin.
-
-Example schedule:
+Write-back algorithm:
 
 ```text
-weekly, during a quiet period
+1. Decide whether the fact is durable.
+2. If no, leave it in the session.
+3. If yes, decide whether it must shape nearly every future session.
+4. If yes, add a short declarative Hermes memory entry.
+5. If no, write or update an Obsidian note using the right template.
+6. Link from the relevant index.
+7. Verify by reading the note back.
 ```
+
+### 6. Schedule memory hygiene as a Hermes cron job
+
+Memory hygiene should be recurring because first-pass routing is allowed to be imperfect. The agent making the original memory write only has local context. A later maintenance pass can reroute that knowledge with more distance.
 
 Example Hermes CLI flow:
 
@@ -420,12 +499,14 @@ Example Hermes CLI flow:
 hermes cron create "0 3 * * 0"
 ```
 
-Then set a name such as `memory-hygiene`, choose the normal delivery target for maintenance reports, and use a prompt like the following.
+Use a name such as `memory-hygiene`. The cron prompt should be self-contained because scheduled jobs run in a fresh session.
 
-Example Hermes cron prompt:
+Example cron prompt:
 
 ```markdown
-You are maintaining the agent memory and Markdown brain.
+You are maintaining this Hermes profile's memory and Markdown brain.
+
+Load and follow the `obsidian-brain` skill.
 
 Goal: keep always-loaded Hermes memory small and useful, and move durable but non-global knowledge into the Obsidian vault.
 
@@ -449,17 +530,27 @@ Procedure:
    - update the relevant index or home note;
    - read the written note back to verify it.
 4. For each `compress` or `delete` entry, update Hermes memory only after any needed Obsidian migration has been verified.
-5. Produce a short hygiene report with counts and paths changed. Do not include sensitive note contents in the report.
+5. Produce a short hygiene report with counts and paths changed. Do not include full migrated note contents in the report.
 
 Rules:
 
-- Do not remove a memory entry until any useful durable content has been written and verified elsewhere.
-- Do not turn project state, local operations details, research findings, or decision rationale into always-loaded memory.
+- Move before deleting.
 - Prefer pointers over details in Hermes memory.
+- Do not turn project state, operations details, research findings, or decision rationale into always-loaded memory.
 - If uncertain, keep the entry and mention the uncertainty in the report.
 ```
 
-The useful part is the prompt, not the scheduler. A weekly job with a clear routing policy is often enough. The job can be conservative: it does not need to optimize everything in one pass. It just needs to keep memory from slowly turning back into the brain.
+### 7. Implementation checklist
+
+An agent implementing this for itself should finish with all of the following true:
+
+- [ ] Hermes memory contains a pointer to the vault and the `obsidian-brain` skill.
+- [ ] The vault has roots for decisions, projects, research, operations, brain policy, and templates.
+- [ ] Each root has an index or home note.
+- [ ] The vault has templates for decisions, projects, research, and operations.
+- [ ] The `obsidian-brain` skill exists and contains routing, search, write, verification, and maintenance procedures.
+- [ ] A recurring hygiene cron exists, or the operator has intentionally chosen to run hygiene manually.
+- [ ] The agent has tested the workflow by searching the vault, creating or updating one note from a template, linking it from an index, and reading it back.
 
 ## When to automate
 

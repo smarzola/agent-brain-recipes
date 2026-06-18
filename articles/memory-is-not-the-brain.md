@@ -29,7 +29,6 @@ Examples:
 - stable user preferences;
 - communication style;
 - routing rules;
-- privacy constraints;
 - pointers to authoritative sources;
 - rules that should apply across almost every task.
 
@@ -108,7 +107,7 @@ If the routing policy is wrong, edit the policy. If a template is bad, edit the 
 
 ### Instructions preserve judgment
 
-Not every fact should be remembered. Some facts are sensitive, stale, misleading, or too specific. Agents can make a contextual judgment when the rule is explicit: save durable knowledge to the brain, keep only bootloader facts in memory, and avoid storing secrets or unnecessary personal data.
+Not every fact should be remembered. Some facts are stale, misleading, too specific, or better represented as a real note with evidence and links. Agents can make a contextual judgment when the rule is explicit: save durable knowledge to the brain, keep only bootloader facts in memory, and never store secrets.
 
 ### Instructions keep the system portable
 
@@ -131,7 +130,6 @@ Use this for small facts that should influence nearly every session.
 Good candidates:
 
 - preferred tone and answer style;
-- privacy constraints;
 - canonical knowledge locations;
 - stable role or domain context;
 - rules such as "search the brain before asking for stored context."
@@ -142,8 +140,7 @@ Avoid:
 - local service details;
 - logs;
 - one-off task progress;
-- credentials;
-- private identifiers;
+- credentials or secrets;
 - decisions that deserve a real note.
 
 ### Brain documents
@@ -172,20 +169,6 @@ Good candidates:
 - temporary TODOs;
 - partial reasoning that was superseded;
 - information that will be stale within days.
-
-### Never store
-
-Some things should not be saved into memory or public notes.
-
-Examples:
-
-- passwords;
-- API keys;
-- recovery codes;
-- private contact details;
-- unnecessary personal identifiers;
-- private URLs or internal hostnames in public repos;
-- medical, legal, or financial details unless the storage location is private and intentionally chosen.
 
 ## Templates make the brain searchable
 
@@ -282,12 +265,126 @@ Agents should:
 1. search this folder before asking humans to repeat stored context;
 2. use templates when creating new durable notes;
 3. keep always-loaded memory small;
-4. avoid storing secrets or unnecessary personal data;
-5. link new notes from the relevant index;
-6. verify writes by reading notes back.
+4. link new notes from the relevant index;
+5. verify writes by reading notes back.
 ```
 
 That is enough to start.
+
+## Implementation example: Hermes memory plus an Obsidian vault
+
+Here is a concrete version of the pattern using Hermes Agent and an Obsidian vault. The same structure works with any Markdown folder, but Hermes is a useful example because it has both persistent startup memory and file/search tools.
+
+### 1. Keep Hermes memory as the bootloader
+
+Hermes memory should contain only the facts that are useful before the agent knows the task. A good bootloader memory might look like this:
+
+```markdown
+The durable brain is an Obsidian vault at `~/path/to/brain-vault`.
+Search the vault before asking the user to repeat stored project, decision, research, or operations context.
+Keep Hermes memory small: store only stable preferences, routing rules, and source-of-truth pointers.
+Durable facts belong in Obsidian notes, not in always-loaded memory.
+Use templates from `Templates/` when creating new notes.
+```
+
+A user profile memory might contain stable preferences such as:
+
+```markdown
+User prefers concise, source-grounded answers.
+User prefers durable project state and decisions to be stored in the Obsidian brain.
+```
+
+Notice what is missing: project status, service details, research findings, decision rationale, logs, and temporary TODOs. Those belong elsewhere.
+
+### 2. Put the actual brain in Obsidian
+
+Use a normal Obsidian vault with predictable roots:
+
+```text
+brain-vault/
+  Brain/
+    Brain Home.md
+    Operating Principles.md
+  Decisions/
+    Decision Index.md
+  Projects/
+    Project Index.md
+  Research/
+    Research Index.md
+  Operations/
+    Operations Index.md
+  Templates/
+    Decision.md
+    Project.md
+    Research.md
+    Operations.md
+```
+
+The important parts are the indexes and templates. They give agents stable entry points and predictable note shapes.
+
+### 3. Teach Hermes the workflow as instructions, not a plugin
+
+You do not need a custom memory plugin for the first version. Put the workflow in a Hermes skill, system instruction, or project instruction. For example:
+
+```markdown
+When working with the brain:
+
+1. Search filenames first.
+2. Search note contents with targeted terms.
+3. Read only the most relevant notes.
+4. If creating a durable note, read the closest template from `Templates/`.
+5. Fill the template with the live date and source-grounded content.
+6. Link the new note from the relevant index.
+7. Read the written note back before reporting success.
+8. Do not promote specific project facts into Hermes memory unless they are stable bootloader context.
+```
+
+That instruction is usually enough for a frontier model with file tools. It can search, read, write, patch, and verify ordinary Markdown.
+
+### 4. Use staged retrieval
+
+A typical Hermes turn should look like this:
+
+```text
+User: What did we decide about the deployment model?
+
+Agent:
+1. Search `Decisions/` and `Projects/` for `deployment model`.
+2. Inspect matching filenames and snippets.
+3. Read the one or two relevant notes.
+4. Answer from those notes and link the decision.
+```
+
+The agent should not read the whole vault. It should not paste a large decision index into context if a filename search already found the exact note.
+
+### 5. Use write-back rules
+
+When a conversation creates durable knowledge, Hermes should write it to the vault. Common write-backs:
+
+| Event | Write-back |
+|---|---|
+| A decision is made | Create or update a note in `Decisions/` |
+| A project changes state | Update the project dashboard in `Projects/` |
+| Research was useful beyond the session | Create a source-grounded note in `Research/` |
+| A local operating procedure is discovered | Create or update an `Operations/` note |
+| A stable preference is discovered | Add a short declarative entry to Hermes memory |
+| A temporary task advances | Leave it in the session or task tracker |
+
+The rule is not "remember everything." The rule is "put durable things in the smallest useful place."
+
+### 6. Run occasional hygiene
+
+Over time, startup memory will still accumulate too much. A simple hygiene pass can fix that:
+
+1. Read the current Hermes memory entries.
+2. Classify each entry as `keep`, `move to Obsidian`, or `delete`.
+3. For each moved entry, find or create the right Obsidian note.
+4. Verify the note was written.
+5. Remove or compress the Hermes memory entry.
+
+The output should be a short report of what changed, not a dump of the migrated content.
+
+This gives you the useful part of a memory system without adding an opaque memory system. Hermes remembers where the brain is and how to use it. Obsidian holds the actual knowledge.
 
 ## When to automate
 
@@ -311,37 +408,6 @@ Poor first automation candidates:
 - systems that inject lots of retrieved text into every session.
 
 The automation should support the practice, not replace the judgment.
-
-## Privacy and sharing
-
-If the brain pattern is documented in a public repository, examples must be generic.
-
-Do not publish:
-
-- real names;
-- addresses;
-- private locations;
-- local usernames or home paths;
-- account IDs;
-- emails;
-- device names;
-- service URLs;
-- internal hostnames;
-- logs;
-- screenshots containing personal data;
-- medical, legal, or financial specifics;
-- secrets or tokens.
-
-Use placeholders:
-
-- `Example User`;
-- `Example Project`;
-- `~/path/to/vault`;
-- `https://example.com/private-service`;
-- `device-001`;
-- `decision-001`.
-
-A recipe repository should teach the pattern without leaking the life that produced it.
 
 ## The deeper bet
 

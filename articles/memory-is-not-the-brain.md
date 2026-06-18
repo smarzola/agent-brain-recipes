@@ -59,7 +59,8 @@ The core loop is simple:
 3. search before asking the human to repeat context;
 4. read only the notes needed for the task;
 5. write back decisions, research, and project state when they become durable;
-6. verify writes by reading them back.
+6. verify writes by reading them back;
+7. run periodic memory hygiene to reroute knowledge that landed in the wrong place.
 
 The key phrase is:
 
@@ -68,6 +69,19 @@ The key phrase is:
 Search should be cheap and low context. Filename search, tag search, and short content snippets are usually enough to find the right area. Only after that should the agent read full notes.
 
 This avoids the common failure mode where an agent dumps an entire knowledge base into context and then becomes worse because it is now juggling irrelevant facts.
+
+Memory hygiene is not an afterthought. It is part of the architecture.
+
+At the moment a fact appears, the agent may not know whether it belongs in global startup memory, a project note, a decision record, an operations note, or nowhere. The agent only has local context. It is fine for the first write to be imperfect as long as the system has a maintenance loop that reviews those writes later.
+
+That maintenance loop should periodically inspect always-loaded memory and ask:
+
+- Is this still true?
+- Does this need to shape every future session?
+- Would this be better as a note with context, evidence, and links?
+- Should this be deleted because it was transient?
+
+In other words, memory can be provisional. Hygiene turns provisional memory into a cleaner routing system: some entries stay in startup memory, some get demoted into the brain, some get compressed into pointers, and some disappear.
 
 ## Why plain Markdown works
 
@@ -374,13 +388,17 @@ The rule is not "remember everything." The rule is "put durable things in the sm
 
 ### 6. Run occasional hygiene
 
-Over time, startup memory will still accumulate too much. A simple hygiene pass can fix that:
+Over time, startup memory will still accumulate too much. That does not mean the agent failed. It means the agent made local calls during real work, and some of those calls need to be revisited with more distance.
+
+A simple hygiene pass can fix that:
 
 1. Read the current Hermes memory entries.
-2. Classify each entry as `keep`, `move to Obsidian`, or `delete`.
+2. Classify each entry as `keep`, `move to Obsidian`, `compress to pointer`, or `delete`.
 3. For each moved entry, find or create the right Obsidian note.
 4. Verify the note was written.
 5. Remove or compress the Hermes memory entry.
+
+The maintenance pass is allowed to correct earlier routing. For example, an agent might save a fact as global memory because it looked broadly useful during a task. Later, hygiene can decide that the fact is really project-specific and move it into a project note, leaving behind only a pointer if future agents need to know where to look.
 
 The output should be a short report of what changed, not a dump of the migrated content.
 

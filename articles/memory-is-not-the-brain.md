@@ -404,6 +404,63 @@ The output should be a short report of what changed, not a dump of the migrated 
 
 This gives you the useful part of a memory system without adding an opaque memory system. Hermes remembers where the brain is and how to use it. Obsidian holds the actual knowledge.
 
+### 7. Schedule hygiene as a Hermes cron job
+
+If the pattern is working, make hygiene recurring. In Hermes, that can be a scheduled cron prompt rather than a custom memory plugin.
+
+Example schedule:
+
+```text
+weekly, during a quiet period
+```
+
+Example Hermes CLI flow:
+
+```bash
+hermes cron create "0 3 * * 0"
+```
+
+Then set a name such as `memory-hygiene`, choose the normal delivery target for maintenance reports, and use a prompt like the following.
+
+Example Hermes cron prompt:
+
+```markdown
+You are maintaining the agent memory and Markdown brain.
+
+Goal: keep always-loaded Hermes memory small and useful, and move durable but non-global knowledge into the Obsidian vault.
+
+Sources of truth:
+
+- Hermes memory is only a bootloader: stable preferences, routing rules, and pointers to durable sources.
+- The Obsidian vault at `~/path/to/brain-vault` is the durable brain for decisions, projects, research, and operations.
+
+Procedure:
+
+1. Review the current Hermes memory entries.
+2. Classify each entry as one of:
+   - `keep`: still belongs in always-loaded memory;
+   - `compress`: keep only a shorter pointer or rule;
+   - `move`: migrate the durable detail into the Obsidian vault;
+   - `delete`: remove because it is stale, transient, duplicated, or no longer useful.
+3. For each `move` entry:
+   - search the Obsidian vault for the best existing destination;
+   - if none exists, create the right note using a template from `Templates/`;
+   - preserve enough context that a future agent or human can understand the fact without the old memory entry;
+   - update the relevant index or home note;
+   - read the written note back to verify it.
+4. For each `compress` or `delete` entry, update Hermes memory only after any needed Obsidian migration has been verified.
+5. Produce a short hygiene report with counts and paths changed. Do not include sensitive note contents in the report.
+
+Rules:
+
+- Do not remove a memory entry until any useful durable content has been written and verified elsewhere.
+- Do not turn project state, local operations details, research findings, or decision rationale into always-loaded memory.
+- Prefer pointers over details in Hermes memory.
+- If uncertain, keep the entry and mention the uncertainty in the report.
+```
+
+The useful part is the prompt, not the scheduler. A weekly job with a clear routing policy is often enough. The job can be conservative: it does not need to optimize everything in one pass. It just needs to keep memory from slowly turning back into the brain.
+
 ## When to automate
 
 Automate only after the manual pattern is clear.
